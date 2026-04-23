@@ -1,39 +1,28 @@
-# ACME API REST - Integracion Pedidos
+# ACME Help
 
-Servicio en Java 17 con Spring Boot que expone una API REST en JSON, transforma la solicitud al formato SOAP/XML requerido por ACME y convierte la respuesta SOAP/XML nuevamente a JSON.
+## Descripcion General
 
-## Arquitectura
+Esta aplicacion implementa una API REST para el ciclo de abastecimiento de ACME.
+La tienda envia un pedido en formato JSON y el sistema:
 
-La solucion sigue una arquitectura por capas con estilo Ports and Adapters:
+1. recibe la solicitud REST,
+2. transforma el mensaje a SOAP/XML,
+3. consume el servicio externo de envios,
+4. interpreta la respuesta XML,
+5. retorna una respuesta JSON clara para el cliente.
 
-- `controller`: expone la API REST y valida el contrato HTTP.
-- `application`: contiene el caso de uso `EnviarPedidoUseCase`.
-- `domain`: define el modelo de negocio y el puerto `EnvioPedidoGateway`.
-- `infrastructure`: implementa el consumo del servicio externo SOAP/XML y la transformacion XML.
-- `web.dto`: define los contratos de entrada y salida de la API.
 
-Principios aplicados:
+## Flujo De Integracion
 
-- `S`: cada clase tiene una unica responsabilidad.
-- `O`: el puerto `EnvioPedidoGateway` permite cambiar el proveedor externo sin tocar el caso de uso.
-- `L`: cualquier implementacion del gateway puede sustituir a la actual.
-- `I`: el caso de uso depende de un contrato pequeno y especifico.
-- `D`: la capa de aplicacion depende de abstracciones, no de detalles HTTP/XML.
+### Entrada REST
 
-Patrones usados:
+La API recibe un `POST` con `application/json` en:
 
-- `Ports and Adapters`
-- `Mapper`
-- `Facade` en el caso de uso para orquestar el envio
-- `Adapter` en `SoapPedidoGateway`
+```text
+http://localhost:8080/api/v1/pedidos
+```
 
-## Endpoint REST
-
-- Metodo: `POST`
-- URL: `http://localhost:8080/api/v1/pedidos`
-- Content-Type: `application/json`
-
-### Request
+### Request JSON
 
 ```json
 {
@@ -48,7 +37,45 @@ Patrones usados:
 }
 ```
 
-### Response
+### Transformacion JSON A SOAP/XML
+
+Mapeo aplicado:
+
+- `numPedido` -> `pedido`
+- `cantidadPedido` -> `Cantidad`
+- `codigoEAN` -> `EAN`
+- `nombreProducto` -> `Producto`
+- `numDocumento` -> `Cedula`
+- `direccion` -> `Direccion`
+
+Estructura SOAP generada:
+
+```xml
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:env="http://WSDLs/EnvioPedidos/EnvioPedidosAcme">
+  <soapenv:Header/>
+  <soapenv:Body>
+    <env:EnvioPedidoAcme>
+      <EnvioPedidoRequest>
+        <pedido>75630275</pedido>
+        <Cantidad>1</Cantidad>
+        <EAN>00110000765191002104587</EAN>
+        <Producto>Armario INVAL</Producto>
+        <Cedula>1113987400</Cedula>
+        <Direccion>CR 72B 45 12 APT 301</Direccion>
+      </EnvioPedidoRequest>
+    </env:EnvioPedidoAcme>
+  </soapenv:Body>
+</soapenv:Envelope>
+```
+
+### Transformacion SOAP/XML A JSON
+
+Mapeo de respuesta:
+
+- `Codigo` -> `codigoEnvio`
+- `Mensaje` -> `estado`
+
+### Response JSON
 
 ```json
 {
@@ -59,72 +86,115 @@ Patrones usados:
 }
 ```
 
-## Mapeo aplicado
-
-### JSON a SOAP/XML
-
-- `numPedido` -> `pedido`
-- `cantidadPedido` -> `Cantidad`
-- `codigoEAN` -> `EAN`
-- `nombreProducto` -> `Producto`
-- `numDocumento` -> `Cedula`
-- `direccion` -> `Direccion`
-
-### SOAP/XML a JSON
-
-- `Codigo` -> `codigoEnvio`
-- `Mensaje` -> `estado`
-
 ## Configuracion
 
-Propiedad por defecto en `src/main/resources/application.properties`:
+La URL del servicio externo se configura en `application.properties`:
 
 ```properties
 acme.soap.url=https://run.mocky.io/v3/19217075-6d4e-4818-98bc-416d1feb7b84
 ```
 
-Tambien se puede sobreescribir con variable de entorno:
+Tambien puede definirse por variable de entorno:
 
 ```bash
 ACME_SOAP_URL=https://otro-endpoint
 ```
 
-Nota: el endpoint entregado actualmente responde `404 Not Found`, por lo que la aplicacion queda lista para integrarse pero requiere una URL valida en ejecucion real.
+## Importante
 
-## Ejecutar local
+El endpoint suministrado actualmente responde `404 Not Found`.
+La aplicacion queda correctamente implementada y lista para integrarse, pero para una prueba funcional completa se requiere una URL externa valida.
 
-```bash
-./mvnw spring-boot:run
-```
+## Comandos Utiles
 
-En Windows PowerShell:
+### Ejecutar En Local
+
+En PowerShell:
 
 ```powershell
 .\mvnw.cmd spring-boot:run
 ```
 
-## Pruebas
+En Linux o Git Bash:
+
+```bash
+./mvnw spring-boot:run
+```
+
+### Ejecutar Pruebas
 
 ```bash
 ./mvnw test
 ```
 
+### Generar Artefacto
+
+```bash
+./mvnw -DskipTests package
+```
+
+## cURL Para Postman
+
+Puedes importar este cURL directamente en Postman:
+
+```bash
+curl --location 'http://localhost:8080/api/v1/pedidos' \
+--header 'Content-Type: application/json' \
+--data '{
+  "enviarPedido": {
+    "numPedido": "75630275",
+    "cantidadPedido": "1",
+    "codigoEAN": "00110000765191002104587",
+    "nombreProducto": "Armario INVAL",
+    "numDocumento": "1113987400",
+    "direccion": "CR 72B 45 12 APT 301"
+  }
+}'
+```
+
 ## Docker
 
-### Construir imagen
+### Construir Imagen
 
 ```bash
 docker build -t acme-api .
 ```
 
-### Ejecutar contenedor
+### Ejecutar Contenedor
 
 ```bash
 docker run -p 8080:8080 -e ACME_SOAP_URL=https://otro-endpoint acme-api
 ```
 
+## Estructura Del Proyecto
+
+```text
+src
+├── main
+│   ├── java/co/com/acme
+│   │   ├── application
+│   │   ├── config
+│   │   ├── controller
+│   │   ├── domain
+│   │   ├── infrastructure
+│   │   └── web
+│   └── resources
+└── test
+```
+
 ## Repositorio
 
-Ruta configurada del repositorio remoto:
+Repositorio remoto configurado:
 
-`https://github.com/JohnJairo1024/acme.git`
+```text
+https://github.com/JohnJairo1024/acme.git
+```
+
+## Recomendacion Final
+
+Para sustentacion tecnica, esta solucion puede defenderse como una integracion empresarial desacoplada entre `REST/JSON` y `SOAP/XML`, construida con buenas practicas de arquitectura, patrones de diseño y principios SOLID.
+
+
+## Captura
+
+![img.png](img.png)
